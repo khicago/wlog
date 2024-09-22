@@ -2,59 +2,67 @@ package wlog
 
 import (
 	"context"
-	"sync"
+	"sync/atomic"
 
 	"github.com/khicago/irr"
 )
 
-// DefaultWLog the default wlog instance
-var (
-	DefaultWLog      *WLog
-	defaultWLogMutex sync.RWMutex
-)
+var defaultFactory atomic.Value
 
 func init() {
-	wlog, err := NewWLog(createTextLogger())
+	wlog, err := NewFactory(createTextLogger())
 	if err != nil {
 		panic(irr.Wrap(err, "failed to create default wlog instance"))
 	}
-	DefaultWLog = wlog
-	DevEnabled.Store(true)
+	defaultFactory.Store(wlog)
+}
+
+func getDefaultFactory() *Factory {
+	return defaultFactory.Load().(*Factory)
 }
 
 // SetEntryGetter sets the EntryMaker of default wlog instance
 func SetEntryGetter(em EntryMaker) {
-	defaultWLogMutex.Lock()
-	defer defaultWLogMutex.Unlock()
-	DefaultWLog.SetEntryMaker(em)
+	getDefaultFactory().SetEntryMaker(em)
+}
+
+// Leaf - create a log entry from the given context and fingerprints (using the default wlog instance)
+func Leaf(ctx context.Context, fingerPrints ...string) WLog {
+	wlog, _ := getDefaultFactory().NewBuilder(ctx).
+		WithStrategy(ForkLeaf).
+		WithFingerPrints(fingerPrints...).
+		Build()
+	return wlog
+}
+
+// Branch - create a log entry from the given context and fingerprints (using the default wlog instance)
+func Branch(ctx context.Context, fingerPrints ...string) (WLog, context.Context) {
+	return getDefaultFactory().NewBuilder(ctx).
+		WithStrategy(ForkBranch).
+		WithFingerPrints(fingerPrints...).
+		Build()
+}
+
+// DetachNew - create a log entry from the given context and fingerprints (using the default wlog instance)
+// method and fingerprint will be transferred to ctx, thus the mfp works in future
+func DetachNew(ctx context.Context, fingerPrints ...string) (WLog, context.Context) {
+	return getDefaultFactory().NewBuilder(ctx).
+		WithStrategy(NewTree).
+		WithFingerPrints(fingerPrints...).
+		Build()
 }
 
 // Common create with given ctx and fingerprints (by default wlog instance)
-func Common(fingerPrints ...string) Log {
-	defaultWLogMutex.RLock()
-	defer defaultWLogMutex.RUnlock()
-	l := DefaultWLog.Common(fingerPrints...)
-	return l
+func Common(fingerPrints ...string) WLog {
+	wlog, _ := getDefaultFactory().NewBuilder(context.Background()).
+		WithStrategy(ForkLeaf).
+		WithFingerPrints(fingerPrints...).
+		Build()
+	return wlog
 }
 
-// From - create a log entry from the given context and fingerprints (using the default wlog instance)
-func From(ctx context.Context, fingerPrints ...string) Log {
-	return DefaultWLog.ByCtx(ctx, fingerPrints...)
-}
-
-// FromHold - create a log entry from the given context and fingerprints (using the default wlog instance)
-func FromHold(ctx context.Context, fingerPrints ...string) (Log, context.Context) {
-	return DefaultWLog.ByCtxAndCache(ctx, fingerPrints...)
-}
-
-// FromRelease - create a log entry from the given context and fingerprints (using the default wlog instance)
-// method and finger print will be transferred to ctx, thus the mfp works in future
-func FromRelease(ctx context.Context, fingerPrints ...string) (Log, context.Context) {
-	return DefaultWLog.ByCtxAndRemoveCache(ctx, fingerPrints...)
-}
-
-// Builder - create a new builder with the given context
+// B - create a new builder with the given context
 // using .Build() method to create a new log entry
-func Builder(ctx context.Context) *WLogBuilder {
-	return DefaultWLog.NewBuilder(ctx)
+func B(ctx context.Context) *Builder {
+	return getDefaultFactory().NewBuilder(ctx)
 }

@@ -1,30 +1,47 @@
 package wlog
 
 import (
-	"sync/atomic"
-
 	"github.com/khicago/irr"
 )
 
 // KeyMethod is the key used to specify the method in the context
 const KeyMethod = "method_"
 
+// EntryKeyWLogSrc is the key used to specify the wlog source in the context
+const EntryKeyWLogSrc = "wlog.src"
+const EntryKeyWLogSrcValueEM = "em"
+const EntryKeyWLogSrcValueDefault = "default"
+const EntryKeyWLogSrcValueLogger = "logger"
+
 // KeyFingerPrint is the key used to specify the fingerprint in the context
-const KeyFingerPrint = "finger_print_"
+const KeyFingerPrint = "wlog.fp"
 
 // keyLocalMethod is the key used for local logging methods
-const keyLocalMethod = "local_"
+const keyLocalMethod = "wlog.local"
 
 // defaultMethodValue is the default value for the method
 const defaultMethodValue = "-"
 
-var (
+type (
+	// NodeStrategy define how to handle chain and columns when new node is created
+	NodeStrategy int
+)
 
-	// CtxKeyCacheEntry is the key to cache log entry into a context
-	CtxKeyCacheEntry = struct{ CtxKeyCacheEntry struct{} }{}
+const (
+	// ForkLeaf mode
+	// - chain: Entry Join, ctx not save path change
+	// - column: Entry Combine, ctx not save new column
+	ForkLeaf NodeStrategy = 0
 
-	// CtxKeyCacheMFP is the key to cache method and finger print into a context
-	CtxKeyCacheMFP = struct{ CtxKeyCacheMFP struct{} }{}
+	// ForkBranch mode
+	// - chain: Entry and ctx chain Join
+	// - column: Entry and ctx columns combine
+	ForkBranch NodeStrategy = 1
+
+	// NewTree mode (ctx will not create new, only chain and columns)
+	// - chain: Entry create new chain, only keep new chain
+	// - column: Entry create new columns, only keep new columns
+	NewTree NodeStrategy = 2
 )
 
 var (
@@ -34,6 +51,3 @@ var (
 	// ErrArgumentTypeNotMatch is returned when the argument type doesn't match the expected type
 	ErrArgumentTypeNotMatch = irr.Error("invalid arguments: type error")
 )
-
-// DevEnabled controls whether all dev loggers print to ioutil.Discard, concurrent safe
-var DevEnabled atomic.Bool

@@ -1,19 +1,21 @@
-# WLog: Contextual and Fingerprint-Aware Logging for Go
+# WLog: Advanced Contextual Logging for Go
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/khicago/wlog)](https://goreportcard.com/report/github.com/khicago/wlog)
 [![GoDoc](https://godoc.org/github.com/khicago/wlog?status.svg)](https://godoc.org/github.com/khicago/wlog)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-WLog is a high-performance, context-aware logging library for Go, built on top of [logrus](https://github.com/sirupsen/logrus). It introduces the concept of fingerprints for enhanced log tracing and provides a flexible builder pattern for log entry creation.
+WLog is a high-performance, context-aware logging library for Go, built on top of [logrus](https://github.com/sirupsen/logrus). It introduces advanced concepts like fingerprint chains and column-based fields for enhanced log tracing and structured logging.
 
 ## Features
 
-- **Context-Aware Logging**: Seamlessly integrate logging with Go's context package.
-- **Fingerprint Tracing**: Unique identifier system for precise log tracking across complex systems.
+- **Context-Aware Logging**: Seamless integration with Go's context package.
+- **Fingerprint Chain**: Hierarchical identifier system for precise log tracking across complex systems.
+- **Column-Based Fields**: Efficient storage and manipulation of log fields.
 - **Flexible Builder Pattern**: Construct log entries with a fluent interface.
-- **Entry Caching**: Optimize performance by caching log entries in context.
+- **Multiple Logging Strategies**: Leaf, Branch, and NewTree strategies for different logging needs.
 - **Development Mode**: Dedicated logging for development environments.
 - **Global and Local Instances**: Support for both application-wide and localized logging.
+- **Standardized Syntax**: Clear syntax for describing log usage and function position in call chains.
 
 ## Installation
 
@@ -37,98 +39,87 @@ func main() {
 
     // Context-aware logging
     ctx := context.Background()
-    wlog.From(ctx, "user_service").Info("User logged in")
+    wlog.Leaf(ctx, "user_service").Info("User logged in")
 
     // Development logging
     wlog.LDev.Log().Debug("Debug information")
 
     // Using the builder pattern
-    log, newCtx := wlog.Builder(ctx).
+    log, newCtx := wlog.B(ctx).
+        WithStrategy(wlog.ForkBranch).
         WithFingerPrints("auth", "login").
         WithField("user_id", 12345).
-        Cache().
         Build()
     log.Info("User authenticated")
 
-    // Using cached entry
-    wlog.From(newCtx, "sub_process").Info("Subsequent log using cached entry")
+    // Using updated context
+    wlog.Leaf(newCtx, "sub_process").Info("Subsequent log using updated context")
 }
 ```
 
 ## Advanced Usage
 
-### Custom WLog Instances
+### Custom Factory Instances
 
-Create custom WLog instances with specific configurations:
+Create custom Factory instances with specific configurations:
 
 ```go
 customLogger := logrus.New()
 customLogger.SetFormatter(&logrus.JSONFormatter{})
 
-wlog, err := wlog.NewWLog(customLogger)
+factory, err := wlog.NewFactory(customLogger)
 if err != nil {
     panic(err)
 }
 
-wlog.Common("custom_module").Info("Logging with custom instance")
+factory.Common("custom_module").Info("Logging with custom instance")
 ```
 
-### Fingerprint Tracing
+### Fingerprint Chain Management
 
-Utilize fingerprints for precise log tracing:
+WLog provides a standardized syntax for managing log chains and function positioning:
 
 ```go
-log := wlog.Common("api", "auth")
-log.Info("Authentication attempt")
+// Assuming an existing chain: a/b/c
 
-log.WithFPAppends("2fa").Info("Two-factor authentication initiated")
+// Leaf Node: Appends to the chain without modifying context
+// Prints: a/b/c/func_name
+log := wlog.Leaf(ctx, "func_name")
+
+// Branch Node: Appends to the chain and updates context
+// Prints: a/b/c/func_name, and child nodes start from this new chain
+log, ctx := wlog.Branch(ctx, "func_name")
+
+// Detach New: Starts a new chain, context is passed but chain is reset
+// Prints: func_name, and child nodes start from this new root
+log, ctx := wlog.DetachNew(ctx, "func_name")
 ```
 
-### Context-Aware Logging with Caching
+This syntax allows for clear and consistent logging across complex function call hierarchies.
 
-WLog provides powerful methods for context-aware logging with built-in caching mechanisms. This is particularly useful for optimizing performance in high-throughput scenarios or when tracing logs across multiple function calls.
+### Context-Aware Logging
 
-#### FromHold: Caching Log Entries
-
-The `FromHold` method creates a log entry and caches it in the context for future use:
+WLog provides powerful methods for context-aware logging:
 
 ```go
-log, ctx := wlog.FromHold(ctx, "service", "method")
-log.Info("This log entry is cached in the context")
+// Simple logging with context
+wlog.Leaf(ctx, "service").Info("Processing request")
 
-// Later in the code, using the same context
-wlog.From(ctx).Info("This uses the cached log entry")
+// Branching: creates a new log entry and updates the context
+log, newCtx := wlog.Branch(ctx, "sub_service")
+log.Info("Sub-service operation")
+
+// Using the updated context
+wlog.Leaf(newCtx, "final_step").Info("Operation completed")
 ```
 
-This is beneficial when you want to reuse the same log entry (with its fields and fingerprints) across multiple log calls within the same context flow.
-
-#### FromRelease: Using and Removing Cached Entries
-
-The `FromRelease` method is used when you want to use a cached log entry one last time and then remove it from the context:
-
-```go
-log, ctx := wlog.FromRelease(ctx, "service", "cleanup")
-log.Info("Final log using cached entry, which will be removed after this")
-
-// Subsequent logs will not use the cached entry
-wlog.From(ctx).Info("This creates a new log entry")
-```
-
-This method is particularly useful at the end of a context lifecycle or when transitioning between different logical sections of your application.
-
-#### Practical Example: Request Handling
-
-Here's a more comprehensive example demonstrating the use of `FromHold` and `FromRelease` in a typical request handling scenario:
+### Practical Example: Request Handling
 
 ```go
 func HandleRequest(w http.ResponseWriter, r *http.Request) {
-    ctx := r.Context()
-
-    // Start of request: cache the log entry
-    log, ctx := wlog.FromHold(ctx, "api", "handle_request")
+    log, ctx := wlog.Branch(r.Context(), "api_request")
     log.Info("Request received")
 
-    // Process the request
     result, err := processRequest(ctx)
     if err != nil {
         log.WithError(err).Error("Failed to process request")
@@ -136,199 +127,56 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Log success using the cached entry
     log.WithField("result", result).Info("Request processed successfully")
 
-    // End of request: use and remove the cached entry
-    log, ctx = wlog.FromRelease(ctx, "api", "finish_request")
-    log.Info("Request handling completed")
-
-    // Response sent, cached log entry is now removed from context
+    wlog.Leaf(ctx, "finish_request").Info("Request handling completed")
 }
 
 func processRequest(ctx context.Context) (string, error) {
-    // This function can use wlog.From(ctx) to log with the cached entry
-    wlog.From(ctx, "process_request").Debug("Processing request")
+    wlog.Leaf(ctx, "process_request").Debug("Processing request")
     // ... processing logic ...
     return "result", nil
 }
 ```
 
-In this example, `FromHold` is used at the beginning of the request handling to cache a log entry. This cached entry is then used throughout the request lifecycle. At the end, `FromRelease` is called to log the final message and remove the cached entry from the context.
-
-This pattern helps in maintaining consistent log fields and fingerprints across the entire request handling process while also providing performance benefits by reducing the need to create new log entries for each log call.
-
 ## Best Practices
 
-To get the most out of WLog while maintaining clean and efficient code, consider the following best practices:
+1. **Use Single-Level Fingerprints**: For most cases, use a single fingerprint level for clarity.
+2. **Leverage Builder Pattern for Complex Scenarios**: Use the Builder pattern when you need to add fields and customize the logging strategy.
+3. **Prefer Convenience Methods for Simple Cases**: Use `Leaf`, `Branch`, or `DetachNew` for straightforward logging.
+4. **Consistent Naming for Fingerprints**: Adopt a consistent naming convention, e.g., service or module names.
+5. **Utilize Chain Management Appropriately**:
+   - Use `Leaf` for appending to the log chain without modifying the context.
+   - Use `Branch` when you want to extend the chain and update the context for child operations.
+   - Use `DetachNew` when starting a completely new logical section or microservice boundary in your application.
+6. **Leverage Dev() for Development-Only Logs**: Use `LDev.Log()` for development-only logs.
+7. **Consistent Function Positioning**: Always use the standardized syntax at the beginning of your functions to clearly indicate their position in the call hierarchy.
 
-### 1. Single-Level Fingerprint for Most Cases
-
-When using `From`, `FromHold`, and `FromRelease`, it's generally recommended to pass only one level of fingerprint:
-
-```go
-// Preferred
-log := wlog.From(ctx, "user_service")
-
-// Instead of
-log := wlog.From(ctx, "service", "user", "get_profile")
-```
-
-This approach keeps your logs clean and easy to filter while still providing sufficient context. If you need more detailed categorization, consider using fields instead of multiple fingerprint levels.
-
-### 2. Use Builder Pattern for Complex Scenarios
-
-When you need to add fields and want to hold the log entry in the context, use the Builder pattern:
+## Advanced Initialization in Production
 
 ```go
-log, ctx := wlog.Builder(ctx).
-    WithFingerPrints("payment_service").
-    WithField("user_id", userID).
-    WithField("amount", amount).
-    Cache().
-    Build()
-
-log.Info("Processing payment")
-```
-
-This method allows for more complex log entry construction while still benefiting from context caching.
-
-### 3. Prefer Convenience Methods for Simple Cases
-
-For straightforward logging without additional fields or caching requirements, use the convenience methods:
-
-```go
-// Simple logging
-wlog.From(ctx, "auth_service").Info("User authenticated")
-
-// Caching for a short-lived operation
-log, ctx := wlog.FromHold(ctx, "transaction")
-// ... perform operation ...
-wlog.FromRelease(ctx, "transaction").Info("Transaction completed")
-```
-
-These methods provide a clean and concise way to log in most scenarios.
-
-### 4. Consistent Naming for Fingerprints
-
-Adopt a consistent naming convention for your fingerprints. For example, use service or module names:
-
-```go
-wlog.From(ctx, "user_service")
-wlog.From(ctx, "payment_gateway")
-wlog.From(ctx, "email_notifier")
-```
-
-This consistency makes it easier to filter and analyze logs later.
-
-### 5. Use FromHold for Request-Scoped Logging
-
-For request-scoped operations, use `FromHold` at the beginning and `FromRelease` at the end:
-
-```go
-func HandleRequest(w http.ResponseWriter, r *http.Request) {
-    log, ctx := wlog.FromHold(r.Context(), "api_request")
-    // ... handle request ...
-    wlog.FromRelease(ctx, "api_request").Info("Request completed")
-}
-```
-
-This pattern ensures consistent logging throughout the request lifecycle while optimizing performance.
-
-> Use FromRelease when you want to only pass the fingerprint
-
-### 6. Leverage Dev() for Development-Only Logs
-
-Use the `Dev()` method for logs that should only appear in development environments:
-
-```go
-wlog.From(ctx, "debug").Dev().Info("This log only appears in dev mode")
-```
-
-Remember to control this with the `DevEnabled` flag in your application configuration.
-
-By following these best practices, you'll be able to maintain a clean, efficient, and consistent logging structure throughout your application, making it easier to debug issues and monitor your system's behavior.
-
-### 7. Advanced Initialization in production
-
-WLog supports highly customizable initialization, allowing integration with existing logging systems and tailored configurations. Here's a focused example of setting up WLog with advanced features:
-
-```go
-package main
-
-import (
-    "context"
-    "io"
-    "os"
-
-    "github.com/khicago/wlog"
-    "github.com/sirupsen/logrus"
-    "gopkg.in/natefinch/lumberjack.v2"
-)
-
-func main() {
-    // Configure log rotation
-    logRoller := &lumberjack.Logger{
-        Filename:   "./logs/app.log",
-        MaxSize:    10,    // megabytes
-        MaxBackups: 3,
-        MaxAge:     28,    // days
-        Compress:   true,
-    }
-    defer logRoller.Close()
-
-    // Initialize WLog
-    initWLog(logRoller)
-
-    // Use WLog in your application
-    startLogger := wlog.Common("app_start")
-    startLogger.Info("Application initialized successfully")
-
-    // Rest of your application...
-}
-
 func initWLog(fileLogger io.Writer) {
-    // Configure logrus
     logrus.SetFormatter(&logrus.JSONFormatter{
         PrettyPrint: true, // For better readability in development
     })
     logrus.SetLevel(logrus.TraceLevel)
 
-    // Use both stdout and file for logging
     multiWriter := io.MultiWriter(os.Stdout, fileLogger)
     logrus.SetOutput(multiWriter)
 
-    // Configure WLog to use logrus
     wlog.SetEntryGetter(func(ctx context.Context) *logrus.Entry {
         return logrus.WithContext(ctx)
     })
 }
 ```
 
-This initialization process demonstrates key WLog features:
+## Performance Comparison
 
-1. **Log Rotation**: Utilizing `lumberjack` for efficient log file management.
-2. **Multi-output Logging**: Directing logs to both stdout and a file.
-3. **Custom Formatting**: Using JSON formatting for structured logging.
-4. **Flexible Log Levels**: Setting appropriate log levels for different environments.
-5. **Integration with logrus**: Configuring WLog to leverage logrus's powerful features.
-6. **Context-Aware Logging**: Setting up WLog to use context-enriched log entries.
-
-By adopting this pattern, you can create a robust logging setup that integrates WLog seamlessly with your application's specific requirements, ensuring comprehensive and efficient logging across all components.
-
-## Benchmarks
-
-Preliminary benchmarks show significant performance improvements in high-concurrency scenarios:
-
-```
-BenchmarkWLog/StandardLogging-8         1000000    1234 ns/op
-BenchmarkWLog/CachedLogging-8           2000000     567 ns/op
-BenchmarkWLog/FingerPrintTracing-8      1500000     789 ns/op
-```
+While WLog may not always have the fastest raw performance, it offers unique features like chain management and context-aware logging that are not available in other libraries. The performance trade-off is often negligible in real-world scenarios, especially when considering the added functionality and improved log structure.
 
 ## Contributing
 
-We welcome contributions! Feel free to open issues or submit pull requests.
+We welcome contributions! Please feel free to submit issues or pull requests.
 
 ## License
 

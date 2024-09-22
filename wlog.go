@@ -6,84 +6,55 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// EntryMaker is the function which specifies how wlog creates a logger associated with a context
-type EntryMaker func(ctx context.Context) *logrus.Entry
-
-// WLog is a sandbox for the logger
+// WLog is a wrap of entry
 type WLog struct {
-	entryMaker   EntryMaker
-	defaultEntry *logrus.Entry
+	factory *Factory
+	*logrus.Entry
 }
 
-// SetEntryMaker updates the EntryMaker of the WLog instance
-// It returns the updated WLog instance
-func (w *WLog) SetEntryMaker(em EntryMaker) *WLog {
-	w.entryMaker = em
-	return w
+// WithField adds a single field to the logger (Leaf strategy)
+func (l WLog) WithField(key string, value any) WLog {
+	builder := l.factory.NewBuilder(l.Context).
+		WithStrategy(ForkLeaf).
+		WithField(key, value)
+
+	wlog, _ := builder.Build()
+	return wlog
 }
 
-// Logger returns the underlying logrus.Logger
-func (w *WLog) Logger() *logrus.Logger {
-	return w.defaultEntry.Logger
+// WithFields adds multiple fields to the logger (Leaf strategy)
+func (l WLog) WithFields(fields Fields) WLog {
+	builder := l.factory.NewBuilder(l.Context).
+		WithStrategy(ForkLeaf).
+		WithFields(fields)
+
+	wlog, _ := builder.Build()
+	return wlog
 }
 
-// SetLevel sets the logging level for the WLog instance
-func (w *WLog) SetLevel(level logrus.Level) {
-	w.Logger().SetLevel(level)
+// WithBranchField adds a single field to the logger and updates the context (Branch strategy)
+func (l WLog) BranchField(ctx context.Context, key string, value any) (WLog, context.Context) {
+	builder := l.factory.NewBuilder(ctx).
+		WithStrategy(ForkBranch).
+		WithField(key, value)
+
+	return builder.Build()
 }
 
-// NewWLog creates a new WLog instance
-// The argument can be EntryMaker, *logrus.Logger or nil
-func NewWLog(entryMakerOrLogger any) (*WLog, error) {
-	if entryMakerOrLogger == nil {
-		return nil, ErrLackOfEntryMakerOrLogger
-	}
+// WithBranchFields adds multiple fields to the logger and updates the context (Branch strategy)
+func (l WLog) BranchFields(ctx context.Context, fields Fields) (WLog, context.Context) {
+	builder := l.factory.NewBuilder(ctx).
+		WithStrategy(ForkBranch).
+		WithFields(fields)
 
-	if em, ok := entryMakerOrLogger.(EntryMaker); ok {
-		return &WLog{
-			entryMaker: em,
-		}, nil
-	}
-
-	if entry, ok := entryMakerOrLogger.(*logrus.Entry); ok {
-		return &WLog{
-			defaultEntry: entry,
-		}, nil
-	}
-
-	if logger, ok := entryMakerOrLogger.(*logrus.Logger); ok {
-		return &WLog{
-			defaultEntry: logger.WithField(KeyMethod, defaultMethodValue),
-		}, nil
-	}
-
-	return nil, ErrArgumentTypeNotMatch
+	return builder.Build()
 }
 
-// --------------------------------------------------- wlog - logger create methods ---------------------------------------------------
+// Branch returns a new logger append chainNode to the origin logger
+func (l WLog) Branch(ctx context.Context, fingerPrints ...string) (WLog, context.Context) {
+	builder := l.factory.NewBuilder(ctx).
+		WithStrategy(ForkBranch).
+		WithFingerPrints(fingerPrints...)
 
-// ByCtx creates a new log entry associated with the given context
-func (w *WLog) ByCtx(ctx context.Context, fingerPrints ...string) Log {
-	log, _ := w.NewBuilder(ctx).WithFingerPrints(fingerPrints...).Build()
-	return Log{Entry: log.Entry}
-}
-
-// Common creates a new log entry with an empty context
-func (w *WLog) Common(fingerPrints ...string) Log {
-	log, _ := w.NewBuilder(context.Background()).WithFingerPrints(fingerPrints...).Build()
-	return Log{Entry: log.Entry}
-}
-
-// ByCtxAndCache is a convenience method that returns a log entry and caches it in the context
-// It's recommended to use the NewBuilder method for more flexibility
-func (w *WLog) ByCtxAndCache(ctx context.Context, fingerPrints ...string) (Log, context.Context) {
-	log, newCtx := w.NewBuilder(ctx).WithFingerPrints(fingerPrints...).Cache().Build()
-	return Log{Entry: log.Entry}, newCtx
-}
-
-// ByCtxAndRemoveCache is a convenience method that returns a log entry and removes the cache from the context
-// It's recommended to use the NewBuilder method for more flexibility
-func (w *WLog) ByCtxAndRemoveCache(ctx context.Context, fingerPrints ...string) (Log, context.Context) {
-	log, newCtx := w.NewBuilder(ctx).WithFingerPrints(fingerPrints...).RemoveCache().Build()
-	return Log{Entry: log.Entry}, newCtx
+	return builder.Build()
 }
