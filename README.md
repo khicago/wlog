@@ -12,10 +12,9 @@ WLog is a high-performance, context-aware logging library for Go, built on top o
 - **Fingerprint Chain**: Hierarchical identifier system for precise log tracking across complex systems.
 - **Column-Based Fields**: Efficient storage and manipulation of log fields.
 - **Flexible Builder Pattern**: Construct log entries with a fluent interface.
-- **Multiple Logging Strategies**: Leaf, Branch, and NewTree strategies for different logging needs.
+- **Multiple Logging Strategies**: Leaf, Branch, and Detach strategies for different logging needs.
 - **Development Mode**: Dedicated logging for development environments.
 - **Global and Local Instances**: Support for both application-wide and localized logging.
-- **Standardized Syntax**: Clear syntax for describing log usage and function position in call chains.
 
 ## Installation
 
@@ -44,12 +43,10 @@ func main() {
     // Development logging
     wlog.LDev.Log().Debug("Debug information")
 
-    // Using the builder pattern
-    log, newCtx := wlog.B(ctx).
-        WithStrategy(wlog.ForkBranch).
-        WithFingerPrints("auth", "login").
-        WithField("user_id", 12345).
-        Build()
+    // Using the builder pattern with fields
+    log, newCtx := wlog.By(ctx, "auth").
+        Field("user_id", 12345).
+        Branch()
     log.Info("User authenticated")
 
     // Using updated context
@@ -72,45 +69,41 @@ if err != nil {
     panic(err)
 }
 
-factory.Common("custom_module").Info("Logging with custom instance")
+factory.NewBuilder(context.Background()).Name("custom_module").Leaf().Info("Logging with custom instance")
 ```
 
 ### Fingerprint Chain Management
 
-WLog provides a standardized syntax for managing log chains and function positioning:
+WLog provides three strategies for managing log chains:
+
+1. **Leaf**: Appends to the chain without modifying context.
+2. **Branch**: Appends to the chain and updates context.
+3. **Detach**: Starts a new chain, resetting the context.
 
 ```go
-// Assuming an existing chain: a/b/c
-
-// Leaf Node: Appends to the chain without modifying context
-// Prints: a/b/c/func_name
+// Leaf: Appends to the chain without modifying context
 log := wlog.Leaf(ctx, "func_name")
+log.Info("Leaf log entry")
 
-// Branch Node: Appends to the chain and updates context
-// Prints: a/b/c/func_name, and child nodes start from this new chain
-log, ctx := wlog.Branch(ctx, "func_name")
+// Branch: Appends to the chain and updates context
+log, newCtx := wlog.Branch(ctx, "func_name")
+log.Info("Branch log entry")
 
-// Detach New: Starts a new chain, context is passed but chain is reset
-// Prints: func_name, and child nodes start from this new root
-log, ctx := wlog.DetachNew(ctx, "func_name")
+// Detach: Starts a new chain, resetting the context
+log, newCtx := wlog.Detach(ctx, "func_name")
+log.Info("Detached log entry")
 ```
 
-This syntax allows for clear and consistent logging across complex function call hierarchies.
+### Adding Fields to Log Entries
 
-### Context-Aware Logging
-
-WLog provides powerful methods for context-aware logging:
+When you need to add fields to your log entries, use the `By` method with the builder pattern:
 
 ```go
-// Simple logging with context
-wlog.Leaf(ctx, "service").Info("Processing request")
-
-// Branching: creates a new log entry and updates the context
-log, newCtx := wlog.Branch(ctx, "sub_service")
-log.Info("Sub-service operation")
-
-// Using the updated context
-wlog.Leaf(newCtx, "final_step").Info("Operation completed")
+log := wlog.By(ctx, "payment_service").
+    Field("user_id", userID).
+    Field("amount", amount).
+    Leaf()
+log.Info("Processing payment")
 ```
 
 ### Practical Example: Request Handling
@@ -127,9 +120,7 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    log.WithField("result", result).Info("Request processed successfully")
-
-    wlog.Leaf(ctx, "finish_request").Info("Request handling completed")
+    wlog.By(ctx, "finish_request").Field("result", result).Leaf().Info("Request processed successfully")
 }
 
 func processRequest(ctx context.Context) (string, error) {
@@ -142,37 +133,13 @@ func processRequest(ctx context.Context) (string, error) {
 ## Best Practices
 
 1. **Use Single-Level Fingerprints**: For most cases, use a single fingerprint level for clarity.
-2. **Leverage Builder Pattern for Complex Scenarios**: Use the Builder pattern when you need to add fields and customize the logging strategy.
-3. **Prefer Convenience Methods for Simple Cases**: Use `Leaf`, `Branch`, or `DetachNew` for straightforward logging.
+2. **Leverage Builder Pattern for Fields**: Use `wlog.By(ctx, "name").Field(key, value)...` when adding fields.
+3. **Choose Appropriate Strategy**:
+   - Use `Leaf` for simple logging without context updates.
+   - Use `Branch` when you want to update the context for child operations.
+   - Use `Detach` when starting a new logical section in your application.
 4. **Consistent Naming for Fingerprints**: Adopt a consistent naming convention, e.g., service or module names.
-5. **Utilize Chain Management Appropriately**:
-   - Use `Leaf` for appending to the log chain without modifying the context.
-   - Use `Branch` when you want to extend the chain and update the context for child operations.
-   - Use `DetachNew` when starting a completely new logical section or microservice boundary in your application.
-6. **Leverage Dev() for Development-Only Logs**: Use `LDev.Log()` for development-only logs.
-7. **Consistent Function Positioning**: Always use the standardized syntax at the beginning of your functions to clearly indicate their position in the call hierarchy.
-
-## Advanced Initialization in Production
-
-```go
-func initWLog(fileLogger io.Writer) {
-    logrus.SetFormatter(&logrus.JSONFormatter{
-        PrettyPrint: true, // For better readability in development
-    })
-    logrus.SetLevel(logrus.TraceLevel)
-
-    multiWriter := io.MultiWriter(os.Stdout, fileLogger)
-    logrus.SetOutput(multiWriter)
-
-    wlog.SetEntryGetter(func(ctx context.Context) *logrus.Entry {
-        return logrus.WithContext(ctx)
-    })
-}
-```
-
-## Performance Comparison
-
-While WLog may not always have the fastest raw performance, it offers unique features like chain management and context-aware logging that are not available in other libraries. The performance trade-off is often negligible in real-world scenarios, especially when considering the added functionality and improved log structure.
+5. **Utilize Development Logging**: Use `LDev.Log()` for development-only logs.
 
 ## Contributing
 

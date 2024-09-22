@@ -8,10 +8,12 @@ import (
 const KeyMethod = "method_"
 
 // EntryKeyWLogSrc is the key used to specify the wlog source in the context
-const EntryKeyWLogSrc = "wlog.src"
-const EntryKeyWLogSrcValueEM = "em"
-const EntryKeyWLogSrcValueDefault = "default"
-const EntryKeyWLogSrcValueLogger = "logger"
+const (
+	EntryKeyWLogSrc             = "wlog.src"
+	EntryKeyWLogSrcValueEM      = "em"
+	EntryKeyWLogSrcValueDefault = "default"
+	EntryKeyWLogSrcValueLogger  = "logger"
+)
 
 // KeyFingerPrint is the key used to specify the fingerprint in the context
 const KeyFingerPrint = "wlog.fp"

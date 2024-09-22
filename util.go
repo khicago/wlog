@@ -1,7 +1,7 @@
 package wlog
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -41,6 +41,6 @@ func createDiscardLogger() *logrus.Logger {
 		DisableColors: true,
 		FullTimestamp: false,
 	}
-	logger.SetOutput(ioutil.Discard)
+	logger.SetOutput(io.Discard)
 	return logger
 }

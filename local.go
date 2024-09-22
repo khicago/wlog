@@ -2,7 +2,7 @@ package wlog
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"sync/atomic"
 
 	"github.com/sirupsen/logrus"
@@ -11,15 +11,15 @@ import (
 // LocalWLogMethod is used to specify the kinds of logger
 type LocalWLogMethod string
 
-// DevEnabled controls whether all dev loggers print to ioutil.Discard, concurrent safe
+// DevEnabled controls whether all dev loggers print to io.Discard, concurrent safe
 var DevEnabled atomic.Bool
 
 const (
-	// LDev can used to print debug messages
+	// LDev can be used to print debug messages
 	LDev LocalWLogMethod = "dev"
-	// LInit can used to print init messages
+	// LInit can be used to print init messages
 	LInit LocalWLogMethod = "init"
-	// LExit can used to print exit messages
+	// LExit can be used to print exit messages
 	LExit LocalWLogMethod = "exit"
 )
 
@@ -37,7 +37,7 @@ func init() {
 	}
 
 	discardLogger := &logrus.Logger{
-		Out:       ioutil.Discard,
+		Out:       io.Discard,
 		Formatter: new(logrus.TextFormatter),
 		Level:     logrus.DebugLevel,
 	}
@@ -62,10 +62,6 @@ func (m LocalWLogMethod) Log(fingerPrints ...string) WLog {
 		factory = localF
 	}
 
-	builder := factory.NewBuilder(localCtx).
-		WithStrategy(ForkLeaf).
-		WithFingerPrints(fingerPrints...).
-		WithField(keyLocalMethod, m)
-	wlog, _ := builder.Build()
+	wlog := factory.NewBuilder(localCtx).Name(fingerPrints...).Field(keyLocalMethod, m).Leaf()
 	return wlog
 }

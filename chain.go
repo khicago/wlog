@@ -12,11 +12,8 @@ type (
 	Chain []string
 )
 
-var (
-
-	// CtxKeyChain is the key to cache fingerprint into a context
-	CtxKeyChain = struct{ CtxKeyChain struct{} }{}
-)
+// CtxKeyChain is the key to cache fingerprint into a context
+var CtxKeyChain = struct{ CtxKeyChain struct{} }{}
 
 // String returns the string representation of the fingerprints
 func (cc Chain) String() string {

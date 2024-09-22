@@ -20,10 +20,8 @@ type (
 	Fields = map[string]any
 )
 
-var (
-	// CtxKeyColumns is the key to cache Columns in context
-	CtxKeyColumns = struct{ CtxKeyColumns struct{} }{}
-)
+// CtxKeyColumns is the key to cache Columns in context
+var CtxKeyColumns = struct{ CtxKeyColumns struct{} }{}
 
 // WriteEntry write columns to entry
 func (c Columns) WriteEntry(entry *logrus.Entry) *logrus.Entry {

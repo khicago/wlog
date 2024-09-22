@@ -1,4 +1,4 @@
-entry = ["./**/*.go", "./benchmark.txt", "./README.md"]
+entry = ["./**/*.go", "./benchmark.txt"]
 exclude = [".bundle.txt"]
 output = "src.bundle.txt"
 description = ""

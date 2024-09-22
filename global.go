@@ -21,48 +21,34 @@ func getDefaultFactory() *Factory {
 	return defaultFactory.Load().(*Factory)
 }
 
-// SetEntryGetter sets the EntryMaker of default wlog instance
-func SetEntryGetter(em EntryMaker) {
+// SetEntryMaker sets the EntryMaker of default wlog instance
+func SetEntryMaker(em EntryMaker) {
 	getDefaultFactory().SetEntryMaker(em)
+}
+
+// By - create a new builder with the given context
+// using .Build() method to create a new log entry
+func By(ctx context.Context, fingerPrints ...string) *Builder {
+	return getDefaultFactory().NewBuilder(ctx).Name(fingerPrints...)
 }
 
 // Leaf - create a log entry from the given context and fingerprints (using the default wlog instance)
 func Leaf(ctx context.Context, fingerPrints ...string) WLog {
-	wlog, _ := getDefaultFactory().NewBuilder(ctx).
-		WithStrategy(ForkLeaf).
-		WithFingerPrints(fingerPrints...).
-		Build()
-	return wlog
+	return By(ctx, fingerPrints...).Leaf()
 }
 
 // Branch - create a log entry from the given context and fingerprints (using the default wlog instance)
 func Branch(ctx context.Context, fingerPrints ...string) (WLog, context.Context) {
-	return getDefaultFactory().NewBuilder(ctx).
-		WithStrategy(ForkBranch).
-		WithFingerPrints(fingerPrints...).
-		Build()
+	return By(ctx, fingerPrints...).Branch()
 }
 
-// DetachNew - create a log entry from the given context and fingerprints (using the default wlog instance)
+// Detach - create a log entry from the given context and fingerprints (using the default wlog instance)
 // method and fingerprint will be transferred to ctx, thus the mfp works in future
-func DetachNew(ctx context.Context, fingerPrints ...string) (WLog, context.Context) {
-	return getDefaultFactory().NewBuilder(ctx).
-		WithStrategy(NewTree).
-		WithFingerPrints(fingerPrints...).
-		Build()
+func Detach(ctx context.Context, fingerPrints ...string) (WLog, context.Context) {
+	return By(ctx, fingerPrints...).Detach()
 }
 
 // Common create with given ctx and fingerprints (by default wlog instance)
 func Common(fingerPrints ...string) WLog {
-	wlog, _ := getDefaultFactory().NewBuilder(context.Background()).
-		WithStrategy(ForkLeaf).
-		WithFingerPrints(fingerPrints...).
-		Build()
-	return wlog
-}
-
-// B - create a new builder with the given context
-// using .Build() method to create a new log entry
-func B(ctx context.Context) *Builder {
-	return getDefaultFactory().NewBuilder(ctx)
+	return Leaf(localCtx, fingerPrints...)
 }
